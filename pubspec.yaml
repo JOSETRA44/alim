@@ -10,6 +10,8 @@ workspace:
   - packages/alim_core
   - packages/alim_engine
   - packages/alim_engine_mock
+  - packages/alim_spec
+  - packages/alim_theme_engine
 
 dependencies:
   flutter:
@@ -17,9 +19,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^3.0.0
   go_router: ^16.0.0
+  path_provider: ^2.1.0
   alim_core: any
   alim_engine: any
   alim_engine_mock: any
+  alim_spec: any
+  alim_theme_engine: any
 
 dev_dependencies:
   flutter_test:

@@ -1,0 +1,12 @@
+name: alim_spec
+description: Formato ALIM - modelos del spec, parser/validador JSON y presets. Puro Dart.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.9.2
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: any

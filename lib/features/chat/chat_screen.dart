@@ -1,4 +1,5 @@
 import 'package:alim_engine/alim_engine.dart';
+import 'package:alim_theme_engine/alim_theme_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -88,9 +89,16 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final outgoing = message.isOutgoing;
-    final background = outgoing
-        ? theme.colorScheme.primaryContainer
-        : theme.colorScheme.surfaceContainerHighest;
+    // Estilo compilado por el theme engine (spec ALIM). El fallback solo
+    // aplica si un test monta la burbuja fuera del tema de la app.
+    final bubble = theme.extension<AlimBubbleStyle>() ??
+        AlimBubbleStyle(
+          incoming: theme.colorScheme.surfaceContainerHighest,
+          outgoing: theme.colorScheme.primaryContainer,
+          radius: 16,
+          tailRadius: 4,
+          maxWidthFraction: 0.75,
+        );
 
     return Align(
       alignment: outgoing ? Alignment.centerRight : Alignment.centerLeft,
@@ -98,15 +106,18 @@ class _MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.75,
+          maxWidth:
+              MediaQuery.sizeOf(context).width * bubble.maxWidthFraction,
         ),
         decoration: BoxDecoration(
-          color: background,
+          color: outgoing ? bubble.outgoing : bubble.incoming,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(outgoing ? 16 : 4),
-            bottomRight: Radius.circular(outgoing ? 4 : 16),
+            topLeft: Radius.circular(bubble.radius),
+            topRight: Radius.circular(bubble.radius),
+            bottomLeft:
+                Radius.circular(outgoing ? bubble.radius : bubble.tailRadius),
+            bottomRight:
+                Radius.circular(outgoing ? bubble.tailRadius : bubble.radius),
           ),
         ),
         child: Column(
