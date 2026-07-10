@@ -1,0 +1,16 @@
+name: alim_engine_mock
+description: Motor de mensajeria simulado - desarrollo de UI, tests y previews del Dev Mode.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  alim_core: any
+  alim_engine: any
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: any

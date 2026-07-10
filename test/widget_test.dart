@@ -1,30 +1,66 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:alim/app/app.dart';
+import 'package:alim/app/di.dart';
+import 'package:alim_engine_mock/alim_engine_mock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:alim/main.dart';
-
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  Future<void> pumpApp(WidgetTester tester,
+      {required bool autoAuthenticate}) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineProvider.overrideWith((ref) {
+            final engine = MockMessagingEngine(
+              autoAuthenticate: autoAuthenticate,
+              replyDelay: Duration.zero,
+            );
+            ref.onDispose(engine.dispose);
+            engine.start();
+            return engine;
+          }),
+        ],
+        child: const AlimApp(),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+  }
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('autenticado: muestra la lista de chats semilla',
+      (tester) async {
+    await pumpApp(tester, autoAuthenticate: true);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(find.text('ALIM'), findsOneWidget);
+    expect(find.text('Equipo ALIM'), findsOneWidget);
+    expect(find.text('Ada Lovelace'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('sin sesión: redirige al flujo de autenticación',
+      (tester) async {
+    await pumpApp(tester, autoAuthenticate: false);
+
+    expect(find.text('Inicia sesión'), findsOneWidget);
+  });
+
+  testWidgets('abrir un chat muestra sus mensajes y permite escribir',
+      (tester) async {
+    await pumpApp(tester, autoAuthenticate: true);
+
+    await tester.tap(find.text('Ada Lovelace'));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      find.text('¿O sea que puedo rediseñar mi burbuja en runtime?'),
+      findsWidgets,
+    );
+
+    await tester.enterText(find.byType(TextField), 'hola desde el test');
+    await tester.tap(find.byTooltip('Enviar'));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('hola desde el test'), findsOneWidget);
   });
 }
