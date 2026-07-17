@@ -1,6 +1,10 @@
 # Secretos locales (api_id/api_hash de Telegram, claves) — NUNCA commitear
 env.local.json
 
+# Binarios nativos de TDLib (se descargan con scripts/setup_tdlib.ps1)
+windows/tdlib/
+android/app/src/main/jniLibs/
+
 # Miscellaneous
 *.class
 *.log
@@ -33,7 +37,8 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+# Sin barra inicial: también los build/ de cada paquete del workspace.
+build/
 /coverage/
 
 # Symbolication related

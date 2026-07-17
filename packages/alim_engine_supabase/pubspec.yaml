@@ -1,0 +1,33 @@
+name: alim_engine_supabase
+description: Motor propio "uchat native" local-first - Drift como única fuente de verdad, Supabase solo como capa de sync en background.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  alim_core: any
+  alim_engine: any
+  alim_keystore: any
+  drift: ^2.20.0
+  # SQLCipher en vez de sqlite3 a secas: cifra el fichero SQLite en reposo.
+  # (Con package:sqlite3 2.x este es el paquete correcto; queda obsoleto solo
+  # al migrar a sqlite3 3.x, que exige un SDK de Dart más nuevo del que
+  # tenemos.)
+  sqlcipher_flutter_libs: ^0.6.0
+  sqlite3: ^2.4.0
+  path: ^1.9.0
+  path_provider: ^2.1.0
+  supabase_flutter: ^2.8.0
+  uuid: ^4.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  drift_dev: ^2.20.0
+  build_runner: ^2.4.0

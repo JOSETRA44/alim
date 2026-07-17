@@ -69,11 +69,11 @@ void main() {
       (tester) async {
     await pumpApp(tester, autoAuthenticate: true);
 
+    const key = BubbleContextKey(
+        isOutgoing: true, isRead: false, isGroup: false, isFailed: false);
     ThemeData appTheme() =>
         tester.widget<MaterialApp>(find.byType(MaterialApp)).theme!;
-    final defaultBubbleRadius =
-        appTheme().extension<AlimBubbleStyle>()!.radius;
-    expect(defaultBubbleRadius, 16);
+    expect(appTheme().extension<AlimBubbleTheme>()!.resolve(key).radius, 16);
 
     await tester.tap(find.byTooltip('Ajustes'));
     await tester.pumpAndSettle();
@@ -85,7 +85,30 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     // El tema compilado cambió sin reiniciar: hot-apply verificado.
-    expect(appTheme().extension<AlimBubbleStyle>()!.radius, 6);
+    expect(appTheme().extension<AlimBubbleTheme>()!.resolve(key).radius, 6);
     expect(find.textContaining('Tema aplicado'), findsOneWidget);
+  });
+
+  testWidgets('preset Expresivo: layout de bloques renderiza la burbuja',
+      (tester) async {
+    await pumpApp(tester, autoAuthenticate: true);
+
+    await tester.tap(find.byTooltip('Ajustes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Modo Desarrollador'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Expresivo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // go('/dev') deja la pila ['/', '/dev']: un back vuelve a chats.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Equipo ALIM'));
+    await tester.pumpAndSettle();
+
+    // El layout custom muestra la etiqueta 'tú' en los mensajes salientes.
+    expect(find.text('tú'), findsWidgets);
+    expect(find.text('Zarpamos con el Hito 1 🚀'), findsOneWidget);
   });
 }

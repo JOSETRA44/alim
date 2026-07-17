@@ -1,6 +1,7 @@
 import 'package:alim_spec/alim_spec.dart';
 import 'package:flutter/material.dart';
 
+import 'block_layout.dart';
 import 'bubble_style.dart';
 
 /// Tema compilado: dos [ThemeData] inmutables listos para MaterialApp.
@@ -21,13 +22,20 @@ class CompiledTheme {
 class ThemeCompiler {
   const ThemeCompiler._();
 
-  static CompiledTheme compile(AlimSpec spec) => CompiledTheme(
-        spec: spec,
-        light: _buildTheme(spec, Brightness.light),
-        dark: _buildTheme(spec, Brightness.dark),
-      );
+  /// [issues] recoge problemas de compilación (expresiones inválidas,
+  /// bloques desconocidos); el editor del Dev Mode los muestra junto a los
+  /// del parser.
+  static CompiledTheme compile(AlimSpec spec, {List<SpecIssue>? issues}) {
+    final sink = issues ?? <SpecIssue>[];
+    return CompiledTheme(
+      spec: spec,
+      light: _buildTheme(spec, Brightness.light, sink),
+      dark: _buildTheme(spec, Brightness.dark, sink),
+    );
+  }
 
-  static ThemeData _buildTheme(AlimSpec spec, Brightness brightness) {
+  static ThemeData _buildTheme(
+      AlimSpec spec, Brightness brightness, List<SpecIssue> issues) {
     final tokens = spec.tokens;
     final scheme = _buildScheme(tokens.color, brightness);
     final shape = tokens.shape;
@@ -98,7 +106,9 @@ class ThemeCompiler {
           borderRadius: BorderRadius.circular(shape.medium),
         ),
       ),
-      extensions: [_buildBubbleStyle(spec, scheme)],
+      extensions: [
+        _buildBubbleTheme(spec, scheme, brightness, issues),
+      ],
     );
   }
 
@@ -179,26 +189,106 @@ class ThemeCompiler {
         _ => s,
       };
 
-  static AlimBubbleStyle _buildBubbleStyle(AlimSpec spec, ColorScheme scheme) {
+  /// Construye la extensión de burbuja: expresiones compiladas UNA vez,
+  /// resolver memoizado por clave finita, layout de bloques opcional.
+  static AlimBubbleTheme _buildBubbleTheme(
+    AlimSpec spec,
+    ColorScheme scheme,
+    Brightness brightness,
+    List<SpecIssue> issues,
+  ) {
     final raw = spec.components['chat_bubble'] ?? const {};
-    return AlimBubbleStyle(
-      incoming: _resolveColor(raw['incoming'], scheme) ??
-          scheme.surfaceContainerHighest,
-      outgoing:
-          _resolveColor(raw['outgoing'], scheme) ?? scheme.primaryContainer,
-      radius: _resolveDouble(raw['radius'], min: 0, max: 48) ?? 16,
-      tailRadius: _resolveDouble(raw['tailRadius'], min: 0, max: 48) ?? 4,
-      maxWidthFraction:
-          _resolveDouble(raw['maxWidthFraction'], min: 0.3, max: 1) ?? 0.75,
-    );
+    // Solo se compilan issues una vez (los specs light/dark son idénticos).
+    final sink = brightness == Brightness.light ? issues : <SpecIssue>[];
+
+    final incoming =
+        _colorSpec(raw['incoming'], 'components.chat_bubble.incoming', sink);
+    final outgoing =
+        _colorSpec(raw['outgoing'], 'components.chat_bubble.outgoing', sink);
+    final radius = _resolveDouble(raw['radius'], min: 0, max: 48) ?? 16;
+    final tailRadius = _resolveDouble(raw['tailRadius'], min: 0, max: 48) ?? 4;
+    final maxWidthFraction =
+        _resolveDouble(raw['maxWidthFraction'], min: 0.3, max: 1) ?? 0.75;
+
+    final rawLayout = raw['layout'];
+    final layout = rawLayout == null
+        ? null
+        : CompiledBlock.compile(rawLayout, sink,
+            path: 'components.chat_bubble.layout');
+
+    // Contexto de tokens visible para las expresiones de estilo.
+    final tokensContext = <String, Object?>{
+      'color': {
+        'primary': _hexOf(scheme.primary),
+        'primaryContainer': _hexOf(scheme.primaryContainer),
+        'secondaryContainer': _hexOf(scheme.secondaryContainer),
+        'tertiaryContainer': _hexOf(scheme.tertiaryContainer),
+        'surface': _hexOf(scheme.surface),
+        'surfaceContainerHighest': _hexOf(scheme.surfaceContainerHighest),
+        'error': _hexOf(scheme.error),
+        'errorContainer': _hexOf(scheme.errorContainer),
+      },
+    };
+
+    final cache = <BubbleContextKey, AlimBubbleStyle>{};
+    AlimBubbleStyle resolve(BubbleContextKey key) =>
+        cache.putIfAbsent(key, () {
+          final context = <String, Object?>{
+            'message': {
+              'isOutgoing': key.isOutgoing,
+              'isRead': key.isRead,
+              'isGroup': key.isGroup,
+              'isFailed': key.isFailed,
+            },
+            'tokens': tokensContext,
+          };
+          final spec = key.isOutgoing ? outgoing : incoming;
+          final background = spec.resolve(context, scheme) ??
+              (key.isOutgoing
+                  ? scheme.primaryContainer
+                  : scheme.surfaceContainerHighest);
+          return AlimBubbleStyle(
+            background: background,
+            radius: radius,
+            tailRadius: tailRadius,
+            maxWidthFraction: maxWidthFraction,
+          );
+        });
+
+    return AlimBubbleTheme(resolve: resolve, layout: layout);
   }
 
-  /// Valores de color en componentes: hex literal (`#RRGGBB`) o referencia a
-  /// un rol del esquema (`@primaryContainer`). Inválido → null (default).
-  static Color? _resolveColor(Object? value, ColorScheme scheme) {
-    if (value is! String) return null;
+  static String _hexOf(Color color) =>
+      '#${color.toARGB32().toRadixString(16).padLeft(8, '0').toUpperCase()}';
+
+  /// Valores de color en componentes: hex literal (`#RRGGBB`), referencia a
+  /// rol (`@primaryContainer`) o expresión (`${...}`) que devuelve
+  /// cualquiera de los dos.
+  static _ColorSpec _colorSpec(
+      Object? value, String path, List<SpecIssue> issues) {
+    if (value is! String) return const _StaticColor(null);
+    final trimmed = value.trim();
+    if (trimmed.startsWith(r'${') && trimmed.endsWith('}')) {
+      try {
+        return _ExprColor(
+            AlimExpression.compile(trimmed.substring(2, trimmed.length - 1)));
+      } on ExpressionException catch (e) {
+        issues.add(SpecIssue(SpecSeverity.warning, path, e.message));
+        return const _StaticColor(null);
+      }
+    }
+    final color = _literalColor(trimmed, null);
+    if (color == null && !trimmed.startsWith('@')) {
+      issues.add(SpecIssue(
+          SpecSeverity.warning, path, 'Color inválido, se usa el default'));
+    }
+    return _StaticColor(trimmed);
+  }
+
+  /// Convierte un string ya evaluado (hex o `@role`) a Color.
+  static Color? _literalColor(String value, ColorScheme? scheme) {
     if (value.startsWith('@')) {
-      return _roleValue(scheme, value.substring(1));
+      return scheme == null ? null : _roleValue(scheme, value.substring(1));
     }
     final argb = parseHexColor(value);
     return argb == null ? null : Color(argb);
@@ -229,5 +319,41 @@ class ThemeCompiler {
     if (value is! num) return null;
     final result = value.toDouble();
     return result < min || result > max ? null : result;
+  }
+}
+
+/// Valor de color de componente ya compilado: literal o expresión.
+sealed class _ColorSpec {
+  const _ColorSpec();
+
+  Color? resolve(ExprContext context, ColorScheme scheme);
+}
+
+class _StaticColor extends _ColorSpec {
+  const _StaticColor(this.value);
+
+  final String? value;
+
+  @override
+  Color? resolve(ExprContext context, ColorScheme scheme) =>
+      value == null ? null : ThemeCompiler._literalColor(value!, scheme);
+}
+
+class _ExprColor extends _ColorSpec {
+  const _ExprColor(this.expression);
+
+  final AlimExpression expression;
+
+  @override
+  Color? resolve(ExprContext context, ColorScheme scheme) {
+    try {
+      final result = expression.evaluate(context);
+      return result is String
+          ? ThemeCompiler._literalColor(result, scheme)
+          : null;
+    } on ExpressionException {
+      // Fail-safe: una expresión rota degrada al color por defecto.
+      return null;
+    }
   }
 }

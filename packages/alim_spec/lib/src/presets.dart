@@ -94,9 +94,52 @@ const _burbujaSpecJson = '''
 }
 ''';
 
+/// Demostración del spec v1 completo: colores por EXPRESIÓN (memoizados por
+/// contexto) y layout de bloques del interior de la burbuja.
+const _expresivoSpecJson = r'''
+{
+  "alim": "0.1",
+  "meta": {"name": "Expresivo", "author": "ALIM"},
+  "tokens": {
+    "color": {"seed": "#B3541E", "light": {}, "dark": {}},
+    "typography": {"scale": 1.0},
+    "shape": {"radius": {"sm": 8, "md": 14, "lg": 20}},
+    "spacing": {"unit": 8},
+    "density": 0
+  },
+  "components": {
+    "chat_bubble": {
+      "incoming": "${message.isGroup ? tokens.color.tertiaryContainer : tokens.color.surfaceContainerHighest}",
+      "outgoing": "${message.isRead ? tokens.color.primaryContainer : tokens.color.secondaryContainer}",
+      "radius": 18,
+      "tailRadius": 4,
+      "maxWidthFraction": 0.8,
+      "layout": {
+        "type": "column",
+        "children": [
+          {"type": "sender"},
+          {"type": "text"},
+          {
+            "type": "row",
+            "children": [
+              {"type": "text", "value": "${message.isOutgoing ? 'tú' : ''}", "style": "label"},
+              {"type": "spacer", "size": 6},
+              {"type": "time"},
+              {"type": "spacer", "size": 4},
+              {"type": "status"}
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+''';
+
 /// Presets disponibles en el Dev Mode, en orden de presentación.
 const presetSpecs = <String, String>{
   'Lienzo': defaultSpecJson,
   'Tinta': _tintaSpecJson,
   'Burbuja': _burbujaSpecJson,
+  'Expresivo': _expresivoSpecJson,
 };

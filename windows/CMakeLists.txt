@@ -10,6 +10,23 @@ set(BINARY_NAME "alim")
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)
 
+# OpenSSL para SQLCipher (cifrado en reposo de la BD local del motor
+# Supabase). El plugin sqlcipher_flutter_libs hace find_package(OpenSSL) y en
+# Windows NO trae binarios: se los damos desde vcpkg.
+# Provisiona con: pwsh scripts/setup_openssl.ps1
+if(NOT DEFINED OPENSSL_ROOT_DIR)
+  if(DEFINED ENV{VCPKG_ROOT})
+    set(OPENSSL_ROOT_DIR "$ENV{VCPKG_ROOT}/installed/x64-windows")
+  else()
+    set(OPENSSL_ROOT_DIR "C:/vcpkg/installed/x64-windows")
+  endif()
+endif()
+if(NOT EXISTS "${OPENSSL_ROOT_DIR}/include/openssl")
+  message(FATAL_ERROR
+    "No se encontró OpenSSL en '${OPENSSL_ROOT_DIR}'.\n"
+    "Ejecuta: pwsh scripts/setup_openssl.ps1")
+endif()
+
 # Define build configuration option.
 get_property(IS_MULTICONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(IS_MULTICONFIG)
@@ -106,3 +123,17 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# === TDLib ===
+# tdjson.dll y sus dependencias (descargadas por scripts/setup_tdlib.ps1 en
+# windows/tdlib/) se copian junto al ejecutable para que
+# DynamicLibrary.open('tdjson.dll') resuelva.
+set(TDLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tdlib")
+if(EXISTS "${TDLIB_DIR}")
+  file(GLOB TDLIB_BINARIES "${TDLIB_DIR}/*.dll")
+  install(FILES ${TDLIB_BINARIES}
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+else()
+  message(WARNING "windows/tdlib no existe: el motor TDLib no funcionará. Ejecuta scripts/setup_tdlib.ps1")
+endif()

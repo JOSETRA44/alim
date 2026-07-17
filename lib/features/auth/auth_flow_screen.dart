@@ -12,6 +12,7 @@ class AuthFlowScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authStateProvider).value ?? const AuthInitializing();
+    final engine = ref.watch(engineProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -23,8 +24,12 @@ class AuthFlowScreen extends ConsumerWidget {
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: switch (auth) {
-                  AuthWaitingPhoneNumber(:final error) =>
-                    _PhoneForm(key: const ValueKey('phone'), error: error),
+                  AuthWaitingPhoneNumber(:final error) => _PhoneForm(
+                      key: const ValueKey('phone'),
+                      error: error,
+                      label: engine.identifierLabel,
+                      hint: engine.identifierHint,
+                    ),
                   AuthWaitingCode(:final phoneNumber, :final error) => _CodeForm(
                       key: const ValueKey('code'),
                       phoneNumber: phoneNumber,
@@ -96,8 +101,15 @@ class _FormShell extends StatelessWidget {
 }
 
 class _PhoneForm extends ConsumerStatefulWidget {
-  const _PhoneForm({super.key, this.error});
+  const _PhoneForm({
+    super.key,
+    required this.label,
+    required this.hint,
+    this.error,
+  });
 
+  final String label;
+  final String hint;
   final String? error;
 
   @override
@@ -118,17 +130,19 @@ class _PhoneFormState extends ConsumerState<_PhoneForm> {
 
   @override
   Widget build(BuildContext context) {
+    final isEmail = widget.hint.contains('@');
     return _FormShell(
       title: 'Inicia sesión',
-      subtitle: 'Introduce tu número de teléfono para continuar.',
+      subtitle: 'Introduce tu ${widget.label.toLowerCase()} para continuar.',
       error: widget.error,
       buttonLabel: 'Continuar',
       onSubmit: _submit,
       field: TextField(
         controller: _controller,
-        keyboardType: TextInputType.phone,
+        keyboardType:
+            isEmail ? TextInputType.emailAddress : TextInputType.phone,
         autofocus: true,
-        decoration: const InputDecoration(hintText: '+34 600 000 000'),
+        decoration: InputDecoration(hintText: widget.hint),
         onSubmitted: (_) => _submit(),
       ),
     );

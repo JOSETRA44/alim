@@ -34,20 +34,15 @@ class ThemeNotifier extends Notifier<ThemeState> {
     return _compileState(defaultSpecJson)!;
   }
 
-  /// Aplica [specJson] en caliente. Devuelve los issues del parseo;
-  /// si el JSON es fatal (ilegible) no se aplica nada.
+  /// Aplica [specJson] en caliente. Devuelve los issues de parseo Y de
+  /// compilación (expresiones/bloques inválidos); si el JSON es fatal
+  /// (ilegible) no se aplica nada.
   List<SpecIssue> apply(String specJson) {
-    final result = AlimSpecParser.parse(specJson);
-    final spec = result.spec;
-    if (spec == null) return result.issues;
-
-    state = ThemeState(
-      specJson: specJson,
-      compiled: ThemeCompiler.compile(spec),
-      issues: result.issues,
-    );
+    final next = _compileState(specJson);
+    if (next == null) return AlimSpecParser.parse(specJson).issues;
+    state = next;
     _persist(specJson);
-    return result.issues;
+    return next.issues;
   }
 
   void reset() => apply(defaultSpecJson);
@@ -56,10 +51,12 @@ class ThemeNotifier extends Notifier<ThemeState> {
     final result = AlimSpecParser.parse(specJson);
     final spec = result.spec;
     if (spec == null) return null;
+    final compileIssues = <SpecIssue>[];
+    final compiled = ThemeCompiler.compile(spec, issues: compileIssues);
     return ThemeState(
       specJson: specJson,
-      compiled: ThemeCompiler.compile(spec),
-      issues: result.issues,
+      compiled: compiled,
+      issues: [...result.issues, ...compileIssues],
     );
   }
 

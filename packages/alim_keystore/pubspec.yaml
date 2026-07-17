@@ -1,0 +1,19 @@
+name: alim_keystore
+description: Claves de cifrado de las BD locales de ALIM, custodiadas por el almacén seguro del SO (Windows DPAPI / Android Keystore).
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^9.2.0
+  alim_core: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

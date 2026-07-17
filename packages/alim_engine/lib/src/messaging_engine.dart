@@ -20,6 +20,13 @@ abstract interface class MessagingEngine {
   /// Nombre legible para la UI.
   String get name;
 
+  /// Etiqueta del campo inicial del login (varía por motor: "número de
+  /// teléfono" en TDLib, "correo" en el motor Supabase).
+  String get identifierLabel;
+
+  /// Texto de ejemplo (`hintText`) para ese mismo campo.
+  String get identifierHint;
+
   // --- Ciclo de vida -------------------------------------------------------
 
   /// Arranca el motor. Idempotente: llamadas repetidas no crean recursos
@@ -29,6 +36,11 @@ abstract interface class MessagingEngine {
   /// Cierre ordenado: libera clientes nativos, isolates y streams.
   /// Tras esto el motor queda en [AuthClosed] y no acepta comandos.
   Future<void> dispose();
+
+  /// Señal del ciclo de vida de la app: true al pasar a segundo plano.
+  /// Los motores la usan para reducir actividad (presencia, red); puede
+  /// ser un no-op.
+  Future<void> setBackgrounded(bool backgrounded);
 
   // --- Autenticación -------------------------------------------------------
 

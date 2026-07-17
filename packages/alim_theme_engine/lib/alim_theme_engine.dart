@@ -9,5 +9,6 @@
 /// estado: el hot-apply lo orquesta la app con su propio state management.
 library;
 
+export 'src/block_layout.dart';
 export 'src/bubble_style.dart';
 export 'src/compiler.dart';

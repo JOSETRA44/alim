@@ -5,6 +5,7 @@
 /// alim_theme_engine.
 library;
 
+export 'src/expression.dart';
 export 'src/issues.dart';
 export 'src/parser.dart';
 export 'src/presets.dart';

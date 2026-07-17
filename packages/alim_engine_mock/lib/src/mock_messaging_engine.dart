@@ -44,6 +44,12 @@ class MockMessagingEngine implements MessagingEngine {
   String get name => 'Motor simulado';
 
   @override
+  String get identifierLabel => 'Número de teléfono';
+
+  @override
+  String get identifierHint => '+34 600 000 000';
+
+  @override
   Stream<AuthState> get authStates => _auth.stream;
 
   @override
@@ -81,6 +87,11 @@ class MockMessagingEngine implements MessagingEngine {
       stream.close();
     }
     _log.info('cerrado');
+  }
+
+  @override
+  Future<void> setBackgrounded(bool backgrounded) async {
+    // El motor simulado no tiene presencia ni red que reducir.
   }
 
   // --- Autenticación ---------------------------------------------------------

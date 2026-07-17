@@ -1,8 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- TDLib necesita red también en builds release (debug ya lo incluye). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Sin backup: las BD locales (binlog de TDLib, SQLite del motor
+         Supabase) contienen el historial de mensajes y la sesión. Con el
+         default (allowBackup=true) serían extraíbles por `adb backup` o
+         acabarían en el backup en la nube del dispositivo. -->
     <application
         android:label="alim"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
