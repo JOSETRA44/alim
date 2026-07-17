@@ -65,6 +65,28 @@ void main() {
     expect(find.text('hola desde el test'), findsOneWidget);
   });
 
+  testWidgets('long-press sobre un mensaje propio permite borrarlo',
+      (tester) async {
+    await pumpApp(tester, autoAuthenticate: true);
+
+    await tester.tap(find.text('Ada Lovelace'));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.enterText(find.byType(TextField), 'mensaje a borrar');
+    await tester.tap(find.byTooltip('Enviar'));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('mensaje a borrar'), findsOneWidget);
+
+    // Long-press sobre la burbuja propia → menú → borrar.
+    await tester.longPress(find.text('mensaje a borrar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Borrar para todos'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('mensaje a borrar'), findsNothing);
+  });
+
   testWidgets('Dev Mode: aplicar el preset Tinta cambia el tema en caliente',
       (tester) async {
     await pumpApp(tester, autoAuthenticate: true);

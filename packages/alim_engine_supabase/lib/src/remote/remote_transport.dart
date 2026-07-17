@@ -44,6 +44,9 @@ abstract interface class RemoteTransport {
 
   Future<void> insertMessage(RemoteMessage message);
 
+  /// Borra el mensaje del backend. RLS solo lo permite al remitente.
+  Future<void> deleteMessage(String messageId);
+
   Stream<RemoteEvent> get events;
 
   Future<void> dispose();

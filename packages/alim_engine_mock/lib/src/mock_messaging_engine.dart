@@ -12,7 +12,7 @@ import 'seed_data.dart';
 /// - cualquier teléfono es aceptado;
 /// - el código `11111` lleva a 2FA, cualquier otro de 5 dígitos autentica;
 /// - la contraseña correcta de 2FA es `alim`.
-class MockMessagingEngine implements MessagingEngine {
+class MockMessagingEngine implements MessagingEngine, MessageDeleter {
   MockMessagingEngine({
     this.autoAuthenticate = true,
     this.replyDelay = const Duration(seconds: 2),
@@ -189,6 +189,16 @@ class MockMessagingEngine implements MessagingEngine {
     _chats.value = [
       for (final chat in _chats.value)
         if (chat.id == chatId) chat.copyWith(unreadCount: 0) else chat,
+    ];
+  }
+
+  @override
+  Future<void> deleteMessage(String chatId, String messageId) async {
+    _ensureUsable();
+    final stream = _messagesOf(chatId);
+    stream.value = [
+      for (final message in stream.value)
+        if (message.id != messageId) message,
     ];
   }
 

@@ -15,3 +15,12 @@ abstract interface class ProfileEditor {
   /// ya está en uso.
   Future<void> setUsername(String username);
 }
+
+/// Capacidad opcional: motores donde el usuario puede borrar sus propios
+/// mensajes para todos los participantes. La UI solo ofrece la acción sobre
+/// mensajes salientes; el motor y el backend la vuelven a validar.
+abstract interface class MessageDeleter {
+  /// Borra [messageId] de [chatId] para todos. Lanza `EngineException` si el
+  /// mensaje no es propio o ya no se puede borrar.
+  Future<void> deleteMessage(String chatId, String messageId);
+}

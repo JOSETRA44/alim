@@ -7,6 +7,7 @@ import '../../app/di.dart';
 import '../../common/formatting.dart';
 import '../../common/states.dart';
 import '../dev_mode/inspector.dart';
+// inspectorEnabledProvider vive en inspector.dart.
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key, required this.chatId});
@@ -121,7 +122,7 @@ class _MessageListState extends ConsumerState<_MessageList> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends ConsumerWidget {
   const _MessageBubble({
     super.key,
     required this.message,
@@ -131,8 +132,40 @@ class _MessageBubble extends StatelessWidget {
   final Message message;
   final bool isGroup;
 
+  /// Menú contextual de un mensaje propio (hoy solo "Borrar"). Se ofrece con
+  /// long-press cuando el inspector está apagado, para no pisar su gesto.
+  Future<void> _showActions(BuildContext context, WidgetRef ref) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.delete_outline,
+                  color: Theme.of(context).colorScheme.error),
+              title: Text('Borrar para todos',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action != 'delete' || !context.mounted) return;
+    if (ref.read(engineProvider) case final MessageDeleter deleter) {
+      try {
+        await deleter.deleteMessage(message.chatId, message.id);
+      } catch (error) {
+        if (!context.mounted) return;
+        showEngineError(context, error);
+      }
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final outgoing = message.isOutgoing;
     final bubbleTheme = theme.extension<AlimBubbleTheme>();
@@ -208,13 +241,27 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
 
-    return RepaintBoundary(
-      child: SpecInspectable(
-        path: 'components.chat_bubble',
-        details: 'fondo ${style.background}, radius ${style.radius}',
-        child: bubble,
-      ),
+    // El inspector (si está activo) se queda el long-press. Cuando está
+    // apagado y el mensaje es propio y borrable, ese mismo gesto abre el
+    // menú de acciones — así no compiten dos GestureDetector por el gesto.
+    final inspectorOn = ref.watch(inspectorEnabledProvider);
+    final canDelete = outgoing &&
+        ref.watch(engineProvider) is MessageDeleter &&
+        message.status != MessageStatus.sending;
+
+    Widget interactive = SpecInspectable(
+      path: 'components.chat_bubble',
+      details: 'fondo ${style.background}, radius ${style.radius}',
+      child: bubble,
     );
+    if (!inspectorOn && canDelete) {
+      interactive = GestureDetector(
+        onLongPress: () => _showActions(context, ref),
+        child: interactive,
+      );
+    }
+
+    return RepaintBoundary(child: interactive);
   }
 
   Widget _defaultLayout(

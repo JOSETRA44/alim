@@ -65,10 +65,21 @@ comparten un chat privado; Mallory no es miembro.
 Control positivo: Bob (sí miembro) lee el mensaje correctamente — los ceros
 de arriba no son un falso negativo.
 
-Nadie puede editar ni borrar mensajes (no hay políticas de UPDATE/DELETE en
-`messages`). Es un cierre seguro por defecto, pero implica que **los usuarios
-todavía no pueden borrar sus propios mensajes**: es una carencia de producto
-pendiente, no un agujero.
+Nadie puede editar mensajes (no hay política de UPDATE en `messages`). El
+borrado sí está permitido, pero **solo al remitente de cada mensaje**
+(política `messages_delete_own`), y verificado con el mismo método de
+impersonación de roles:
+
+| Acción | Resultado |
+|---|---|
+| Bob (miembro, no autor) borra el mensaje de Alice | bloqueado |
+| Alice (autora) borra su propio mensaje | permitido |
+| El otro mensaje de Alice tras ese borrado | intacto |
+
+En la app el borrado es "para todos" (revoke en TDLib; borrado de la fila en
+Supabase, que RLS solo concede al autor) y se refleja en el resto de
+dispositivos por Realtime (`messages` tiene `REPLICA IDENTITY FULL` para que
+el evento de DELETE incluya `conversation_id`, no solo la PK).
 
 ### Avisos de `get_advisors` triados
 
@@ -113,5 +124,5 @@ Verificado borrando una cuenta con conversación y mensajes.
 - **Migrar a `sqlite3mc`** cuando el SDK de Dart permita drift ≥ 2.32:
   jubilaría `sqlcipher_flutter_libs` (deprecado) y eliminaría la dependencia
   de OpenSSL/vcpkg en Windows.
-- **Borrado de mensajes propios**: falta la política de DELETE y la UI.
 - **Rotación de claves**: hoy la clave de cifrado no se rota nunca.
+- **Edición de mensajes**: no implementada (no hay política de UPDATE).

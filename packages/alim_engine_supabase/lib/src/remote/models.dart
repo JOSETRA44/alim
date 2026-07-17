@@ -57,3 +57,10 @@ class RemoteConversationChanged extends RemoteEvent {
 
   final String conversationId;
 }
+
+class RemoteMessageDeleted extends RemoteEvent {
+  const RemoteMessageDeleted({required this.id, required this.conversationId});
+
+  final String id;
+  final String conversationId;
+}

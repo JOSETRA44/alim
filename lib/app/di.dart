@@ -38,7 +38,9 @@ final selectedEngineIdProvider =
 /// dispose() del motor anterior y start() del nuevo son automáticos.
 final engineProvider = Provider<MessagingEngine>((ref) {
   final id = ref.watch(selectedEngineIdProvider);
-  final engine = switch (id) {
+  // Tipo explícito: los tres motores comparten ahora MessagingEngine +
+  // MessageDeleter, y el LUB del switch colapsaría a Object sin la anotación.
+  final MessagingEngine engine = switch (id) {
     'tdlib' => TdlibEngine.production(
         const TdlibConfig(apiId: _telegramApiId, apiHash: _telegramApiHash),
       ),

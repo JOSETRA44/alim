@@ -305,6 +305,37 @@ class LocalDatabase extends _$LocalDatabase {
     ));
   }
 
+  /// Borra un mensaje localmente y recalcula el "último mensaje" de la
+  /// conversación si el borrado era el más reciente (para que la lista de
+  /// chats no siga mostrando un mensaje que ya no existe).
+  Future<void> deleteMessageLocal(String messageId) => transaction(() async {
+        final msg = await messageById(messageId);
+        if (msg == null) return;
+        await (delete(localOutbox)..where((t) => t.messageId.equals(messageId)))
+            .go();
+        await (delete(localMessages)..where((t) => t.id.equals(messageId)))
+            .go();
+
+        final conv = await (select(localConversations)
+              ..where((t) => t.id.equals(msg.conversationId)))
+            .getSingleOrNull();
+        if (conv == null || conv.lastMessageId != messageId) return;
+
+        final newest = await (select(localMessages)
+              ..where((t) => t.conversationId.equals(msg.conversationId))
+              ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
+              ..limit(1))
+            .getSingleOrNull();
+        await (update(localConversations)
+              ..where((t) => t.id.equals(msg.conversationId)))
+            .write(LocalConversationsCompanion(
+          lastMessageId: Value(newest?.id),
+          lastMessagePreview: Value(newest?.content),
+          lastMessageSenderId: Value(newest?.senderId),
+          lastMessageSentAt: Value(newest?.createdAt),
+        ));
+      });
+
   Future<void> enqueueOutgoing(Message message) async {
     final text = (message.content as TextContent).text;
     await into(localMessages).insertOnConflictUpdate(

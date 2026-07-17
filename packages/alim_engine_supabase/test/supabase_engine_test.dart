@@ -136,6 +136,52 @@ void main() {
     expect(chats.any((c) => c.id == chatId), isTrue);
   });
 
+  test('MessageDeleter: borra el mensaje local y remotamente', () async {
+    await login('ada@alim.dev');
+    final chatId = await transport.createDirectConversation('u-peer');
+    await db.upsertConversation(transport.conversations[chatId]!,
+        currentUserId: transport.currentUserId!);
+    await engine.sendText(chatId, 'me arrepiento');
+
+    // Espera a que el outbox confirme el envío (estado sent).
+    final sent = await engine.watchMessages(chatId).firstWhere(
+        (m) => m.isNotEmpty && m.single.status == MessageStatus.sent);
+    final messageId = sent.single.id;
+    expect(transport.messages.any((m) => m.id == messageId), isTrue);
+
+    await engine.deleteMessage(chatId, messageId);
+
+    final afterDelete =
+        await engine.watchMessages(chatId).firstWhere((m) => m.isEmpty);
+    expect(afterDelete, isEmpty);
+    expect(transport.messages.any((m) => m.id == messageId), isFalse,
+        reason: 'el borrado debe propagarse al backend');
+  });
+
+  test('MessageDeleter: un borrado por Realtime desde otro equipo se refleja',
+      () async {
+    await login('ada@alim.dev');
+    final chatId = await transport.createDirectConversation('u-peer');
+    await db.upsertConversation(transport.conversations[chatId]!,
+        currentUserId: transport.currentUserId!);
+    transport.emit(RemoteMessageUpserted(RemoteMessage(
+      id: 'm-remoto',
+      conversationId: chatId,
+      senderId: transport.currentUserId!,
+      content: 'enviado desde el móvil',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    )));
+    await engine.watchMessages(chatId).firstWhere((m) => m.isNotEmpty);
+
+    transport.emit(
+        RemoteMessageDeleted(id: 'm-remoto', conversationId: chatId));
+
+    final afterDelete =
+        await engine.watchMessages(chatId).firstWhere((m) => m.isEmpty);
+    expect(afterDelete, isEmpty);
+  });
+
   test('ProfileEditor: setUsername propaga el error de nombre duplicado',
       () async {
     await login('ada@alim.dev');

@@ -50,6 +50,9 @@ class SyncEngine {
         unawaited(
           _db.applyIncomingMessage(message, currentUserId: _currentUserId),
         );
+      case RemoteMessageDeleted(:final id):
+        // Borrado hecho desde otro dispositivo: se refleja localmente.
+        unawaited(_db.deleteMessageLocal(id));
       case RemoteConversationChanged(:final conversationId):
         unawaited(_refreshConversation(conversationId));
     }

@@ -362,5 +362,13 @@ void main() {
       final content = request['input_message_content'] as TdObject;
       expect((content['text'] as TdObject)['text'], 'hola mundo');
     });
+
+    test('deleteMessage borra para todos (revoke: true)', () async {
+      await engine.deleteMessage('9', '42');
+      final request = client.lastOfType('deleteMessages')!;
+      expect(request['chat_id'], 9);
+      expect(request['message_ids'], [42]);
+      expect(request['revoke'], isTrue);
+    });
   });
 }

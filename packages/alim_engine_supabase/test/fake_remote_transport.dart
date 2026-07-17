@@ -165,6 +165,11 @@ class FakeRemoteTransport implements RemoteTransport {
   }
 
   @override
+  Future<void> deleteMessage(String messageId) async {
+    messages.removeWhere((m) => m.id == messageId);
+  }
+
+  @override
   Stream<RemoteEvent> get events => _events.stream;
 
   @override

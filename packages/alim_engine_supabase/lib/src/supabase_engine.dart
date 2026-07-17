@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import 'local/connection.dart';
 import 'local/database.dart';
+import 'remote/models.dart';
 import 'remote/remote_transport.dart';
 import 'remote/supabase_remote_transport.dart';
 import 'sync/sync_engine.dart';
@@ -17,7 +18,11 @@ import 'sync/sync_engine.dart';
 /// máquina de estados de [AuthState] que TDLib (waitingPhoneNumber ahora
 /// contiene un email; nunca se llega a [AuthWaitingPassword]).
 class SupabaseEngine
-    implements MessagingEngine, ConversationStarter, ProfileEditor {
+    implements
+        MessagingEngine,
+        ConversationStarter,
+        ProfileEditor,
+        MessageDeleter {
   /// [database] permite inyectar una BD en memoria en los tests; en
   /// producción se abre cifrada con la clave de [keyStore].
   SupabaseEngine({
@@ -257,6 +262,36 @@ class SupabaseEngine
 
   @override
   Future<void> markChatRead(String chatId) => _db.markRead(chatId);
+
+  @override
+  Future<void> deleteMessage(String chatId, String messageId) async {
+    final userId = _transport.currentUserId;
+    if (userId == null) {
+      throw const EngineException('No autenticado', code: 'NOT_AUTHENTICATED');
+    }
+    // Borrado optimista: desaparece de la UI al instante (la BD local es la
+    // fuente de verdad). Si el borrado remoto falla, se restaura la copia.
+    final backup = await _db.messageById(messageId);
+    await _db.deleteMessageLocal(messageId);
+    try {
+      await _transport.deleteMessage(messageId);
+    } on EngineException {
+      if (backup != null) {
+        await _db.applyIncomingMessage(
+          RemoteMessage(
+            id: backup.id,
+            conversationId: backup.conversationId,
+            senderId: backup.senderId,
+            content: backup.content,
+            createdAt: backup.createdAt,
+            updatedAt: backup.updatedAt,
+          ),
+          currentUserId: userId,
+        );
+      }
+      rethrow;
+    }
+  }
 
   // --- Capacidades opcionales --------------------------------------------
 

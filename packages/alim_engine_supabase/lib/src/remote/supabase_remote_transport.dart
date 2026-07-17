@@ -224,6 +224,15 @@ class SupabaseRemoteTransport implements RemoteTransport {
   }
 
   @override
+  Future<void> deleteMessage(String messageId) async {
+    try {
+      await _client.from('messages').delete().eq('id', messageId);
+    } on sb.PostgrestException catch (e) {
+      throw EngineException(e.message, code: e.code, cause: e);
+    }
+  }
+
+  @override
   Stream<RemoteEvent> get events => _events.stream;
 
   void _subscribeRealtime() {
@@ -234,6 +243,19 @@ class SupabaseRemoteTransport implements RemoteTransport {
         schema: 'public',
         table: 'messages',
         callback: (payload) {
+          if (payload.eventType == sb.PostgresChangeEvent.delete) {
+            // En un DELETE los datos viajan en oldRecord. `messages` tiene
+            // REPLICA IDENTITY FULL (ver migración), así que trae también
+            // conversation_id, no solo la PK.
+            final old = payload.oldRecord;
+            final id = old['id'] as String?;
+            final conversationId = old['conversation_id'] as String?;
+            if (id != null && conversationId != null) {
+              _events.add(RemoteMessageDeleted(
+                  id: id, conversationId: conversationId));
+            }
+            return;
+          }
           final record = payload.newRecord;
           if (record.isEmpty) return;
           _events.add(RemoteMessageUpserted(_messageFrom(record)));

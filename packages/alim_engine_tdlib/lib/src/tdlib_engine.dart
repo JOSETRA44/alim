@@ -13,7 +13,7 @@ import 'config.dart';
 import 'mapping.dart';
 
 /// Motor de mensajería real sobre TDLib (Telegram).
-class TdlibEngine implements MessagingEngine {
+class TdlibEngine implements MessagingEngine, MessageDeleter {
   TdlibEngine({
     required TdClient client,
     required this.config,
@@ -506,6 +506,22 @@ class TdlibEngine implements MessagingEngine {
         'text': {'@type': 'formattedText', 'text': trimmed},
       },
     });
+  }
+
+  @override
+  Future<void> deleteMessage(String chatId, String messageId) async {
+    try {
+      await _client.send({
+        '@type': 'deleteMessages',
+        'chat_id': int.parse(chatId),
+        'message_ids': [int.parse(messageId)],
+        'revoke': true, // borrar para todos, no solo para mí
+      });
+      // TDLib confirma con updateDeleteMessages(is_permanent: true), que ya
+      // quita el mensaje de la ventana observada.
+    } on TdRequestException catch (e) {
+      throw EngineException(e.message, code: '${e.tdCode}', cause: e);
+    }
   }
 
   @override
