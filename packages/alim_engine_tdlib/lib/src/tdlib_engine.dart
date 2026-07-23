@@ -13,7 +13,7 @@ import 'config.dart';
 import 'mapping.dart';
 
 /// Motor de mensajería real sobre TDLib (Telegram).
-class TdlibEngine implements MessagingEngine, MessageDeleter {
+class TdlibEngine implements MessagingEngine, MessageDeleter, MessageEditor {
   TdlibEngine({
     required TdClient client,
     required this.config,
@@ -387,6 +387,15 @@ class TdlibEngine implements MessagingEngine, MessageDeleter {
                 .copyWith(status: MessageStatus.failed),
           );
         }
+      case 'updateMessageContent':
+        // Edición del texto de un mensaje (propia o de otro participante).
+        final chatId = (update['chat_id'] as num?)?.toInt();
+        final messageId = update['message_id'];
+        final newContent = update['new_content'];
+        if (chatId != null && messageId is num && newContent is TdObject) {
+          _windows[chatId]
+              ?.editContent('${messageId.toInt()}', contentFrom(newContent));
+        }
       case 'updateDeleteMessages':
         if (update['is_permanent'] == true) {
           final chatId = (update['chat_id'] as num?)?.toInt();
@@ -525,6 +534,28 @@ class TdlibEngine implements MessagingEngine, MessageDeleter {
   }
 
   @override
+  Future<void> editMessage(
+      String chatId, String messageId, String newText) async {
+    final trimmed = newText.trim();
+    if (trimmed.isEmpty) return;
+    try {
+      await _client.send({
+        '@type': 'editMessageText',
+        'chat_id': int.parse(chatId),
+        'message_id': int.parse(messageId),
+        'input_message_content': {
+          '@type': 'inputMessageText',
+          'text': {'@type': 'formattedText', 'text': trimmed},
+        },
+      });
+      // La confirmación llega como updateMessageContent / updateMessageEdited,
+      // que la ventana observada ya refleja.
+    } on TdRequestException catch (e) {
+      throw EngineException(e.message, code: '${e.tdCode}', cause: e);
+    }
+  }
+
+  @override
   Future<void> markChatRead(String chatId) async {
     final id = int.parse(chatId);
     final last = _chatStore[id]?.lastMessage;
@@ -602,6 +633,23 @@ class _MessageWindow {
         if (item.id == oldId) message else item,
     ];
     _emit();
+  }
+
+  /// Sustituye el contenido de un mensaje ya presente y lo marca como
+  /// editado, conservando el resto de sus campos.
+  void editContent(String id, MessageContent content) {
+    var changed = false;
+    items = [
+      for (final item in items)
+        if (item.id == id)
+          () {
+            changed = true;
+            return item.copyWith(content: content, isEdited: true);
+          }()
+        else
+          item,
+    ];
+    if (changed) _emit();
   }
 
   void removeAll(Set<String> ids) {

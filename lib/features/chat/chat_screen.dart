@@ -132,31 +132,94 @@ class _MessageBubble extends ConsumerWidget {
   final Message message;
   final bool isGroup;
 
-  /// Menú contextual de un mensaje propio (hoy solo "Borrar"). Se ofrece con
+  /// Menú contextual de un mensaje propio (editar / borrar). Se ofrece con
   /// long-press cuando el inspector está apagado, para no pisar su gesto.
-  Future<void> _showActions(BuildContext context, WidgetRef ref) async {
+  Future<void> _showActions(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool canEdit,
+    required bool canDelete,
+  }) async {
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(Icons.delete_outline,
-                  color: Theme.of(context).colorScheme.error),
-              title: Text('Borrar para todos',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
-              onTap: () => Navigator.pop(context, 'delete'),
-            ),
-          ],
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (canEdit)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Editar'),
+                  onTap: () => Navigator.pop(context, 'edit'),
+                ),
+              if (canDelete)
+                ListTile(
+                  leading: Icon(Icons.delete_outline, color: scheme.error),
+                  title: Text('Borrar para todos',
+                      style: TextStyle(color: scheme.error)),
+                  onTap: () => Navigator.pop(context, 'delete'),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case 'edit':
+        await _edit(context, ref);
+      case 'delete':
+        if (ref.read(engineProvider) case final MessageDeleter deleter) {
+          try {
+            await deleter.deleteMessage(message.chatId, message.id);
+          } catch (error) {
+            if (!context.mounted) return;
+            showEngineError(context, error);
+          }
+        }
+    }
+  }
+
+  Future<void> _edit(BuildContext context, WidgetRef ref) async {
+    final current = switch (message.content) {
+      TextContent(:final text) => text,
+      _ => '',
+    };
+    final controller = TextEditingController(text: current);
+    final newText = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar mensaje'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: null,
+          decoration: const InputDecoration(hintText: 'Mensaje'),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Guardar'),
+          ),
+        ],
       ),
     );
-    if (action != 'delete' || !context.mounted) return;
-    if (ref.read(engineProvider) case final MessageDeleter deleter) {
+    if (newText == null ||
+        newText.isEmpty ||
+        newText == current ||
+        !context.mounted) {
+      return;
+    }
+    if (ref.read(engineProvider) case final MessageEditor editor) {
       try {
-        await deleter.deleteMessage(message.chatId, message.id);
+        await editor.editMessage(message.chatId, message.id, newText);
       } catch (error) {
         if (!context.mounted) return;
         showEngineError(context, error);
@@ -212,6 +275,7 @@ class _MessageBubble extends ConsumerWidget {
       isGroup: isGroup,
       isFailed: message.status == MessageStatus.failed,
       isSending: message.status == MessageStatus.sending,
+      isEdited: message.isEdited,
     );
 
     final content = bubbleTheme?.layout != null
@@ -242,21 +306,27 @@ class _MessageBubble extends ConsumerWidget {
     );
 
     // El inspector (si está activo) se queda el long-press. Cuando está
-    // apagado y el mensaje es propio y borrable, ese mismo gesto abre el
-    // menú de acciones — así no compiten dos GestureDetector por el gesto.
+    // apagado y el mensaje es propio, ese mismo gesto abre el menú de
+    // acciones — así no compiten dos GestureDetector por el gesto.
     final inspectorOn = ref.watch(inspectorEnabledProvider);
-    final canDelete = outgoing &&
-        ref.watch(engineProvider) is MessageDeleter &&
-        message.status != MessageStatus.sending;
+    final engine = ref.watch(engineProvider);
+    final settled = message.status != MessageStatus.sending;
+    final canDelete = outgoing && settled && engine is MessageDeleter;
+    // Solo mensajes de texto ya enviados son editables.
+    final canEdit = outgoing &&
+        settled &&
+        engine is MessageEditor &&
+        message.content is TextContent;
 
     Widget interactive = SpecInspectable(
       path: 'components.chat_bubble',
       details: 'fondo ${style.background}, radius ${style.radius}',
       child: bubble,
     );
-    if (!inspectorOn && canDelete) {
+    if (!inspectorOn && (canDelete || canEdit)) {
       interactive = GestureDetector(
-        onLongPress: () => _showActions(context, ref),
+        onLongPress: () =>
+            _showActions(context, ref, canEdit: canEdit, canDelete: canDelete),
         child: interactive,
       );
     }
@@ -286,6 +356,12 @@ class _MessageBubble extends ConsumerWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (data.isEdited)
+              Text(
+                'editado · ',
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
             Text(
               data.timeLabel,
               style: theme.textTheme.labelSmall

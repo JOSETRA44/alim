@@ -22,7 +22,8 @@ class SupabaseEngine
         MessagingEngine,
         ConversationStarter,
         ProfileEditor,
-        MessageDeleter {
+        MessageDeleter,
+        MessageEditor {
   /// [database] permite inyectar una BD en memoria en los tests; en
   /// producción se abre cifrada con la clave de [keyStore].
   SupabaseEngine({
@@ -289,6 +290,38 @@ class SupabaseEngine
           currentUserId: userId,
         );
       }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> editMessage(
+      String chatId, String messageId, String newText) async {
+    final trimmed = newText.trim();
+    if (trimmed.isEmpty) return;
+    final userId = _transport.currentUserId;
+    if (userId == null) {
+      throw const EngineException('No autenticado', code: 'NOT_AUTHENTICATED');
+    }
+    // Optimista: el texto nuevo aparece al instante; si el remoto falla se
+    // restaura el original (con sus fechas, para no marcarlo como editado).
+    final backup = await _db.messageById(messageId);
+    if (backup == null) return;
+    await _db.editMessageLocal(messageId, trimmed);
+    try {
+      await _transport.editMessage(messageId, trimmed);
+    } on EngineException {
+      await _db.applyIncomingMessage(
+        RemoteMessage(
+          id: backup.id,
+          conversationId: backup.conversationId,
+          senderId: backup.senderId,
+          content: backup.content,
+          createdAt: backup.createdAt,
+          updatedAt: backup.updatedAt,
+        ),
+        currentUserId: userId,
+      );
       rethrow;
     }
   }

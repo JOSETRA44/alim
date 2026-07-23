@@ -44,6 +44,11 @@ class LocalMessages extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
+  /// Marca explícita de edición. No se deriva de updatedAt > createdAt
+  /// porque Drift persiste DateTime con precisión de SEGUNDOS: una edición
+  /// dentro del mismo segundo que el envío quedaría sin detectar.
+  BoolColumn get edited => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -86,7 +91,15 @@ class LocalDatabase extends _$LocalDatabase {
   LocalDatabase(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) await m.addColumn(localMessages, localMessages.edited);
+        },
+      );
 
   // --- Lecturas reactivas (consumidas por SupabaseEngine) -------------------
 
@@ -187,6 +200,7 @@ class LocalDatabase extends _$LocalDatabase {
       sentAt: msg.createdAt,
       isOutgoing: isOutgoing,
       status: _statusOf(isOutgoing: isOutgoing, outbox: outbox),
+      isEdited: msg.edited,
     );
   }
 
@@ -276,6 +290,10 @@ class LocalDatabase extends _$LocalDatabase {
         content: message.content,
         createdAt: message.createdAt,
         updatedAt: message.updatedAt,
+        // En el servidor created_at == updated_at en el INSERT (mismo now()
+        // de la transacción); el trigger solo adelanta updated_at al editar.
+        // Aquí sí hay precisión (timestamptz), así que la comparación vale.
+        edited: Value(message.updatedAt.isAfter(message.createdAt)),
       ),
     );
 
@@ -334,6 +352,32 @@ class LocalDatabase extends _$LocalDatabase {
           lastMessageSenderId: Value(newest?.senderId),
           lastMessageSentAt: Value(newest?.createdAt),
         ));
+      });
+
+  /// Edita el texto de un mensaje localmente. Marca la fila como editada
+  /// (updatedAt > createdAt) y refresca el preview de la conversación si el
+  /// mensaje editado es el último.
+  Future<void> editMessageLocal(String messageId, String newContent) =>
+      transaction(() async {
+        final msg = await messageById(messageId);
+        if (msg == null) return;
+        final editedAt =
+            DateTime.now().isAfter(msg.createdAt) ? DateTime.now() : msg.createdAt;
+        await (update(localMessages)..where((t) => t.id.equals(messageId)))
+            .write(LocalMessagesCompanion(
+          content: Value(newContent),
+          updatedAt: Value(editedAt),
+          edited: const Value(true),
+        ));
+        final conv = await (select(localConversations)
+              ..where((t) => t.id.equals(msg.conversationId)))
+            .getSingleOrNull();
+        if (conv?.lastMessageId == messageId) {
+          await (update(localConversations)
+                ..where((t) => t.id.equals(msg.conversationId)))
+              .write(LocalConversationsCompanion(
+                  lastMessagePreview: Value(newContent)));
+        }
       });
 
   Future<void> enqueueOutgoing(Message message) async {

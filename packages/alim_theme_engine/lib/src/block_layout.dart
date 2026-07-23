@@ -20,6 +20,7 @@ class BubbleMessageData {
     required this.isGroup,
     required this.isFailed,
     required this.isSending,
+    this.isEdited = false,
     this.senderName,
   });
 
@@ -30,6 +31,7 @@ class BubbleMessageData {
   final bool isGroup;
   final bool isFailed;
   final bool isSending;
+  final bool isEdited;
   final String? senderName;
 
   /// Contexto completo para expresiones de CONTENIDO (los estilos de color
@@ -43,6 +45,7 @@ class BubbleMessageData {
           'isRead': isRead,
           'isGroup': isGroup,
           'isFailed': isFailed,
+          'isEdited': isEdited,
         },
       };
 }

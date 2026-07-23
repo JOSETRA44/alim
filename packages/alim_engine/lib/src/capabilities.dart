@@ -24,3 +24,11 @@ abstract interface class MessageDeleter {
   /// mensaje no es propio o ya no se puede borrar.
   Future<void> deleteMessage(String chatId, String messageId);
 }
+
+/// Capacidad opcional: motores donde el usuario puede editar el texto de sus
+/// propios mensajes. La UI solo la ofrece sobre mensajes salientes de texto.
+abstract interface class MessageEditor {
+  /// Sustituye el texto de [messageId] en [chatId] por [newText]. Lanza
+  /// `EngineException` si el mensaje no es propio o no es editable.
+  Future<void> editMessage(String chatId, String messageId, String newText);
+}

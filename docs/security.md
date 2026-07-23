@@ -65,21 +65,28 @@ comparten un chat privado; Mallory no es miembro.
 Control positivo: Bob (sí miembro) lee el mensaje correctamente — los ceros
 de arriba no son un falso negativo.
 
-Nadie puede editar mensajes (no hay política de UPDATE en `messages`). El
-borrado sí está permitido, pero **solo al remitente de cada mensaje**
-(política `messages_delete_own`), y verificado con el mismo método de
+Borrar y editar mensajes está permitido **solo al remitente de cada uno**
+(políticas `messages_delete_own` y `messages_update_own`), verificado por
 impersonación de roles:
 
-| Acción | Resultado |
+| Acción de un no-autor / abuso | Resultado |
 |---|---|
 | Bob (miembro, no autor) borra el mensaje de Alice | bloqueado |
-| Alice (autora) borra su propio mensaje | permitido |
-| El otro mensaje de Alice tras ese borrado | intacto |
+| Bob edita el mensaje de Alice | bloqueado |
+| Alice mueve su mensaje a otra conversación (cambia `conversation_id`) | bloqueado |
+| Alice borra / edita el texto de su propio mensaje | permitido |
 
-En la app el borrado es "para todos" (revoke en TDLib; borrado de la fila en
-Supabase, que RLS solo concede al autor) y se refleja en el resto de
-dispositivos por Realtime (`messages` tiene `REPLICA IDENTITY FULL` para que
-el evento de DELETE incluya `conversation_id`, no solo la PK).
+La edición añade una **segunda capa a nivel de columna**: aunque pase la RLS
+de fila, `revoke update … ; grant update (content) …` deja que el rol
+`authenticated` solo escriba `content`. Así no puede falsear el autor, mover
+el mensaje de conversación ni tocar las fechas (el trigger `set_updated_at`
+corre como owner y sigue actualizando `updated_at`).
+
+El borrado y la edición son "para todos" (en TDLib, `revoke: true` /
+`editMessageText`; en Supabase, DELETE/UPDATE de la fila que RLS solo concede
+al autor) y se propagan al resto de dispositivos por Realtime. `messages`
+tiene `REPLICA IDENTITY FULL` para que el evento de DELETE incluya
+`conversation_id`, no solo la PK.
 
 ### Avisos de `get_advisors` triados
 
@@ -125,4 +132,3 @@ Verificado borrando una cuenta con conversación y mensajes.
   jubilaría `sqlcipher_flutter_libs` (deprecado) y eliminaría la dependencia
   de OpenSSL/vcpkg en Windows.
 - **Rotación de claves**: hoy la clave de cifrado no se rota nunca.
-- **Edición de mensajes**: no implementada (no hay política de UPDATE).

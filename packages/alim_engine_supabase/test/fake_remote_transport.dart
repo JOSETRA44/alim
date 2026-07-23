@@ -169,6 +169,27 @@ class FakeRemoteTransport implements RemoteTransport {
     messages.removeWhere((m) => m.id == messageId);
   }
 
+  bool failNextEdit = false;
+
+  @override
+  Future<void> editMessage(String messageId, String content) async {
+    if (failNextEdit) {
+      failNextEdit = false;
+      throw const EngineException('network down', code: 'NETWORK');
+    }
+    final i = messages.indexWhere((m) => m.id == messageId);
+    if (i == -1) return;
+    final old = messages[i];
+    messages[i] = RemoteMessage(
+      id: old.id,
+      conversationId: old.conversationId,
+      senderId: old.senderId,
+      content: content,
+      createdAt: old.createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
   @override
   Stream<RemoteEvent> get events => _events.stream;
 

@@ -87,6 +87,34 @@ void main() {
     expect(find.text('mensaje a borrar'), findsNothing);
   });
 
+  testWidgets('long-press sobre un mensaje propio permite editarlo',
+      (tester) async {
+    await pumpApp(tester, autoAuthenticate: true);
+
+    await tester.tap(find.text('Ada Lovelace'));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.enterText(find.byType(TextField), 'testo con herror');
+    await tester.tap(find.byTooltip('Enviar'));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.longPress(find.text('testo con herror'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Editar'));
+    await tester.pumpAndSettle();
+
+    // El diálogo trae el texto actual; lo corrijo y guardo.
+    await tester.enterText(
+        find.byType(TextField).last, 'texto sin error');
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('texto sin error'), findsOneWidget);
+    expect(find.text('testo con herror'), findsNothing);
+    expect(find.textContaining('editado'), findsOneWidget);
+  });
+
   testWidgets('Dev Mode: aplicar el preset Tinta cambia el tema en caliente',
       (tester) async {
     await pumpApp(tester, autoAuthenticate: true);

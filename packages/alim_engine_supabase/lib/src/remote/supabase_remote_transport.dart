@@ -233,6 +233,17 @@ class SupabaseRemoteTransport implements RemoteTransport {
   }
 
   @override
+  Future<void> editMessage(String messageId, String content) async {
+    try {
+      await _client
+          .from('messages')
+          .update({'content': content}).eq('id', messageId);
+    } on sb.PostgrestException catch (e) {
+      throw EngineException(e.message, code: e.code, cause: e);
+    }
+  }
+
+  @override
   Stream<RemoteEvent> get events => _events.stream;
 
   void _subscribeRealtime() {

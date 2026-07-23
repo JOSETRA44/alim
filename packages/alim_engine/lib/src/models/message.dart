@@ -17,6 +17,13 @@ class TextContent extends MessageContent {
 
   @override
   String get preview => text;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TextContent && other.text == text;
+
+  @override
+  int get hashCode => text.hashCode;
 }
 
 /// Contenido aún no soportado por la UI (stickers, polls, etc.).
@@ -28,6 +35,13 @@ class UnsupportedContent extends MessageContent {
 
   @override
   String get preview => description;
+
+  @override
+  bool operator ==(Object other) =>
+      other is UnsupportedContent && other.description == description;
+
+  @override
+  int get hashCode => description.hashCode;
 }
 
 class Message {
@@ -40,6 +54,7 @@ class Message {
     required this.isOutgoing,
     this.senderName,
     this.status = MessageStatus.sent,
+    this.isEdited = false,
   });
 
   final String id;
@@ -53,21 +68,34 @@ class Message {
   final bool isOutgoing;
   final MessageStatus status;
 
-  Message copyWith({MessageStatus? status}) => Message(
+  /// El mensaje fue editado tras enviarse (la UI muestra "editado").
+  final bool isEdited;
+
+  Message copyWith({
+    MessageStatus? status,
+    MessageContent? content,
+    bool? isEdited,
+  }) =>
+      Message(
         id: id,
         chatId: chatId,
         senderId: senderId,
         senderName: senderName,
-        content: content,
+        content: content ?? this.content,
         sentAt: sentAt,
         isOutgoing: isOutgoing,
         status: status ?? this.status,
+        isEdited: isEdited ?? this.isEdited,
       );
 
   @override
   bool operator ==(Object other) =>
-      other is Message && other.id == id && other.status == status;
+      other is Message &&
+      other.id == id &&
+      other.status == status &&
+      other.content == content &&
+      other.isEdited == isEdited;
 
   @override
-  int get hashCode => Object.hash(id, status);
+  int get hashCode => Object.hash(id, status, content, isEdited);
 }

@@ -65,6 +65,8 @@ Message messageFrom(
         ((message['date'] as num?)?.toInt() ?? 0) * 1000),
     isOutgoing: message['is_outgoing'] == true,
     status: statusFrom(message),
+    // TDLib pone edit_date > 0 cuando el mensaje se editó tras enviarse.
+    isEdited: ((message['edit_date'] as num?)?.toInt() ?? 0) > 0,
   );
 }
 

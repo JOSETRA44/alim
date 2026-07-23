@@ -954,6 +954,19 @@ class $LocalMessagesTable extends LocalMessages
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _editedMeta = const VerificationMeta('edited');
+  @override
+  late final GeneratedColumn<bool> edited = GeneratedColumn<bool>(
+    'edited',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("edited" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -962,6 +975,7 @@ class $LocalMessagesTable extends LocalMessages
     content,
     createdAt,
     updatedAt,
+    edited,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1023,6 +1037,12 @@ class $LocalMessagesTable extends LocalMessages
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('edited')) {
+      context.handle(
+        _editedMeta,
+        edited.isAcceptableOrUnknown(data['edited']!, _editedMeta),
+      );
+    }
     return context;
   }
 
@@ -1056,6 +1076,10 @@ class $LocalMessagesTable extends LocalMessages
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      edited: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}edited'],
+      )!,
     );
   }
 
@@ -1072,6 +1096,11 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
   final String content;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Marca explícita de edición. No se deriva de updatedAt > createdAt
+  /// porque Drift persiste DateTime con precisión de SEGUNDOS: una edición
+  /// dentro del mismo segundo que el envío quedaría sin detectar.
+  final bool edited;
   const LocalMessage({
     required this.id,
     required this.conversationId,
@@ -1079,6 +1108,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
     required this.content,
     required this.createdAt,
     required this.updatedAt,
+    required this.edited,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1089,6 +1119,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
     map['content'] = Variable<String>(content);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['edited'] = Variable<bool>(edited);
     return map;
   }
 
@@ -1100,6 +1131,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
       content: Value(content),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      edited: Value(edited),
     );
   }
 
@@ -1115,6 +1147,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
       content: serializer.fromJson<String>(json['content']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      edited: serializer.fromJson<bool>(json['edited']),
     );
   }
   @override
@@ -1127,6 +1160,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
       'content': serializer.toJson<String>(content),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'edited': serializer.toJson<bool>(edited),
     };
   }
 
@@ -1137,6 +1171,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
     String? content,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? edited,
   }) => LocalMessage(
     id: id ?? this.id,
     conversationId: conversationId ?? this.conversationId,
@@ -1144,6 +1179,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
     content: content ?? this.content,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    edited: edited ?? this.edited,
   );
   LocalMessage copyWithCompanion(LocalMessagesCompanion data) {
     return LocalMessage(
@@ -1155,6 +1191,7 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
       content: data.content.present ? data.content.value : this.content,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      edited: data.edited.present ? data.edited.value : this.edited,
     );
   }
 
@@ -1166,14 +1203,22 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
           ..write('senderId: $senderId, ')
           ..write('content: $content, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('edited: $edited')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, conversationId, senderId, content, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    conversationId,
+    senderId,
+    content,
+    createdAt,
+    updatedAt,
+    edited,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1183,7 +1228,8 @@ class LocalMessage extends DataClass implements Insertable<LocalMessage> {
           other.senderId == this.senderId &&
           other.content == this.content &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.edited == this.edited);
 }
 
 class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
@@ -1193,6 +1239,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
   final Value<String> content;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<bool> edited;
   final Value<int> rowid;
   const LocalMessagesCompanion({
     this.id = const Value.absent(),
@@ -1201,6 +1248,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     this.content = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.edited = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalMessagesCompanion.insert({
@@ -1210,6 +1258,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     required String content,
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.edited = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        conversationId = Value(conversationId),
@@ -1224,6 +1273,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     Expression<String>? content,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<bool>? edited,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1233,6 +1283,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
       if (content != null) 'content': content,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (edited != null) 'edited': edited,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1244,6 +1295,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     Value<String>? content,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<bool>? edited,
     Value<int>? rowid,
   }) {
     return LocalMessagesCompanion(
@@ -1253,6 +1305,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
       content: content ?? this.content,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      edited: edited ?? this.edited,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1278,6 +1331,9 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (edited.present) {
+      map['edited'] = Variable<bool>(edited.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1293,6 +1349,7 @@ class LocalMessagesCompanion extends UpdateCompanion<LocalMessage> {
           ..write('content: $content, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('edited: $edited, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2375,6 +2432,7 @@ typedef $$LocalMessagesTableCreateCompanionBuilder =
       required String content,
       required DateTime createdAt,
       required DateTime updatedAt,
+      Value<bool> edited,
       Value<int> rowid,
     });
 typedef $$LocalMessagesTableUpdateCompanionBuilder =
@@ -2385,6 +2443,7 @@ typedef $$LocalMessagesTableUpdateCompanionBuilder =
       Value<String> content,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<bool> edited,
       Value<int> rowid,
     });
 
@@ -2424,6 +2483,11 @@ class $$LocalMessagesTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get edited => $composableBuilder(
+    column: $table.edited,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2466,6 +2530,11 @@ class $$LocalMessagesTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get edited => $composableBuilder(
+    column: $table.edited,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalMessagesTableAnnotationComposer
@@ -2496,6 +2565,9 @@ class $$LocalMessagesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get edited =>
+      $composableBuilder(column: $table.edited, builder: (column) => column);
 }
 
 class $$LocalMessagesTableTableManager
@@ -2537,6 +2609,7 @@ class $$LocalMessagesTableTableManager
                 Value<String> content = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> edited = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalMessagesCompanion(
                 id: id,
@@ -2545,6 +2618,7 @@ class $$LocalMessagesTableTableManager
                 content: content,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                edited: edited,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2555,6 +2629,7 @@ class $$LocalMessagesTableTableManager
                 required String content,
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<bool> edited = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalMessagesCompanion.insert(
                 id: id,
@@ -2563,6 +2638,7 @@ class $$LocalMessagesTableTableManager
                 content: content,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                edited: edited,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

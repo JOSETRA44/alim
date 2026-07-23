@@ -370,5 +370,40 @@ void main() {
       expect(request['message_ids'], [42]);
       expect(request['revoke'], isTrue);
     });
+
+    test('editMessage envía editMessageText con el texto recortado', () async {
+      await engine.editMessage('9', '42', '  texto nuevo  ');
+      final request = client.lastOfType('editMessageText')!;
+      expect(request['chat_id'], 9);
+      expect(request['message_id'], 42);
+      final content = request['input_message_content'] as TdObject;
+      expect((content['text'] as TdObject)['text'], 'texto nuevo');
+    });
+
+    test('updateMessageContent marca el mensaje como editado en la ventana',
+        () async {
+      // Abre la ventana y recibe un mensaje.
+      final sub = engine.watchMessages('9').listen((_) {});
+      addTearDown(sub.cancel);
+      client.emit({
+        '@type': 'updateNewMessage',
+        'message': textMessage(id: 5, chatId: 9, text: 'antes'),
+      });
+      // Edición entrante de ese mensaje.
+      client.emit({
+        '@type': 'updateMessageContent',
+        'chat_id': 9,
+        'message_id': 5,
+        'new_content': {
+          '@type': 'messageText',
+          'text': {'@type': 'formattedText', 'text': 'después'},
+        },
+      });
+
+      final messages = await engine.watchMessages('9').first;
+      final edited = messages.firstWhere((m) => m.id == '5');
+      expect((edited.content as TextContent).text, 'después');
+      expect(edited.isEdited, isTrue);
+    });
   });
 }

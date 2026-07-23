@@ -182,6 +182,48 @@ void main() {
     expect(afterDelete, isEmpty);
   });
 
+  test('MessageEditor: edita el texto local y remotamente, marca "editado"',
+      () async {
+    await login('ada@alim.dev');
+    final chatId = await transport.createDirectConversation('u-peer');
+    await db.upsertConversation(transport.conversations[chatId]!,
+        currentUserId: transport.currentUserId!);
+    await engine.sendText(chatId, 'testo con herror');
+    final sent = await engine.watchMessages(chatId).firstWhere(
+        (m) => m.isNotEmpty && m.single.status == MessageStatus.sent);
+    final messageId = sent.single.id;
+    expect(sent.single.isEdited, isFalse);
+
+    await engine.editMessage(chatId, messageId, 'texto sin error');
+
+    final edited = await engine.watchMessages(chatId).firstWhere((m) =>
+        m.isNotEmpty && (m.single.content as TextContent).text == 'texto sin error');
+    expect(edited.single.isEdited, isTrue);
+    expect(transport.messages.single.content, 'texto sin error');
+  });
+
+  test('MessageEditor: si el envío remoto falla, restaura el texto original',
+      () async {
+    await login('ada@alim.dev');
+    final chatId = await transport.createDirectConversation('u-peer');
+    await db.upsertConversation(transport.conversations[chatId]!,
+        currentUserId: transport.currentUserId!);
+    await engine.sendText(chatId, 'original');
+    final sent = await engine.watchMessages(chatId).firstWhere(
+        (m) => m.isNotEmpty && m.single.status == MessageStatus.sent);
+    final messageId = sent.single.id;
+
+    transport.failNextEdit = true;
+    await expectLater(
+      () => engine.editMessage(chatId, messageId, 'cambio que no cuaja'),
+      throwsA(isA<EngineException>()),
+    );
+
+    final restored = await db.messageById(messageId);
+    expect(restored!.content, 'original',
+        reason: 'un fallo remoto no debe dejar el texto editado localmente');
+  });
+
   test('ProfileEditor: setUsername propaga el error de nombre duplicado',
       () async {
     await login('ada@alim.dev');
