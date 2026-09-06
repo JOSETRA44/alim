@@ -51,6 +51,10 @@ class TdlibEngine implements MessagingEngine, MessageDeleter, MessageEditor {
   final Map<int, _MessageWindow> _windows = {};
   final Map<int, String> _userNames = {};
 
+  /// Cierres de chat pendientes; se cancelan en [dispose] para no dejar
+  /// trabajo en vuelo contra un cliente ya cerrado.
+  final Set<Timer> _releaseTimers = {};
+
   StreamSubscription<TdObject>? _updatesSub;
   late String _databaseDirectory;
   late String _filesDirectory;
@@ -98,6 +102,10 @@ class TdlibEngine implements MessagingEngine, MessageDeleter, MessageEditor {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    for (final timer in _releaseTimers) {
+      timer.cancel();
+    }
+    _releaseTimers.clear();
     await _updatesSub?.cancel();
     await _client.close();
     _auth.value = const AuthClosed();
@@ -459,13 +467,37 @@ class TdlibEngine implements MessagingEngine, MessageDeleter, MessageEditor {
   @override
   Stream<List<Message>> watchMessages(String chatId) {
     final id = int.parse(chatId);
-    final window = _windows.putIfAbsent(id, () => _MessageWindow());
+    final window = _windows.putIfAbsent(
+      id,
+      () => _MessageWindow(onIdle: () => _scheduleChatRelease(id)),
+    );
     if (!window.initialLoadStarted) {
       window.initialLoadStarted = true;
       _client.post({'@type': 'openChat', 'chat_id': id});
       unawaited(_loadHistory(id, fromMessageId: 0, limit: 30));
     }
     return window.stream.stream;
+  }
+
+  /// `openChat` y `closeChat` son un par obligatorio en TDLib: mientras un
+  /// chat está abierto, TDLib lo mantiene sincronizado activamente. Sin este
+  /// cierre, cada chat visitado quedaba abierto para siempre y el consumo de
+  /// red y memoria crecía durante toda la sesión.
+  ///
+  /// Se espera un margen porque un rebuild de la UI cancela y vuelve a
+  /// suscribirse enseguida; solo se cierra si nadie ha vuelto.
+  void _scheduleChatRelease(int chatId) {
+    if (_disposed) return;
+    late final Timer timer;
+    timer = Timer(const Duration(seconds: 3), () {
+      _releaseTimers.remove(timer);
+      final window = _windows[chatId];
+      if (_disposed || window == null || window.stream.hasListeners) return;
+      _client.post({'@type': 'closeChat', 'chat_id': chatId});
+      _windows.remove(chatId);
+      window.stream.close();
+    });
+    _releaseTimers.add(timer);
   }
 
   @override
@@ -604,8 +636,10 @@ class _ChatEntry {
 
 /// Ventana observada de mensajes de un chat (ascendente por antigüedad).
 class _MessageWindow {
-  final StateStream<List<Message>> stream =
-      StateStream<List<Message>>(const []);
+  _MessageWindow({void Function()? onIdle})
+      : stream = StateStream<List<Message>>(const [], onIdle: onIdle);
+
+  final StateStream<List<Message>> stream;
   List<Message> items = const [];
   bool initialLoadStarted = false;
 

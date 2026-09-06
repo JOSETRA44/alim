@@ -371,6 +371,35 @@ void main() {
       expect(request['revoke'], isTrue);
     });
 
+    test('regresión: al dejar de observar el chat se envía closeChat',
+        () async {
+      // openChat/closeChat son un par en TDLib: sin el cierre, cada chat
+      // visitado quedaba abierto para siempre consumiendo red y memoria.
+      final sub = engine.watchMessages('9').listen((_) {});
+      expect(client.lastOfType('openChat')!['chat_id'], 9);
+      expect(client.lastOfType('closeChat'), isNull);
+
+      await sub.cancel();
+      // El cierre espera un margen por si la UI se resuscribe (rebuild).
+      await Future<void>.delayed(const Duration(milliseconds: 3100));
+
+      expect(client.lastOfType('closeChat')?['chat_id'], 9,
+          reason: 'sin oyentes, el chat debe cerrarse');
+    }, timeout: const Timeout(Duration(seconds: 15)));
+
+    test('regresión: una resuscripción rápida NO cierra el chat', () async {
+      final first = engine.watchMessages('9').listen((_) {});
+      await first.cancel();
+      // Rebuild inmediato de la UI: vuelve a suscribirse enseguida.
+      final second = engine.watchMessages('9').listen((_) {});
+      addTearDown(second.cancel);
+
+      await Future<void>.delayed(const Duration(milliseconds: 3100));
+
+      expect(client.lastOfType('closeChat'), isNull,
+          reason: 'hay un oyente activo: cerrar cortaría la sincronización');
+    }, timeout: const Timeout(Duration(seconds: 15)));
+
     test('editMessage envía editMessageText con el texto recortado', () async {
       await engine.editMessage('9', '42', '  texto nuevo  ');
       final request = client.lastOfType('editMessageText')!;
