@@ -224,6 +224,73 @@ void main() {
         reason: 'un fallo remoto no debe dejar el texto editado localmente');
   });
 
+  test('regresión: tras cambiar de cuenta, isOutgoing usa el usuario NUEVO',
+      () async {
+    // El relay cacheado por chatId congelaba el currentUserId de la primera
+    // apertura: los mensajes de la cuenta anterior se seguían pintando como
+    // propios tras iniciar sesión con otra.
+    await login('ada@alim.dev');
+    final adaId = transport.currentUserId!;
+    final chatId = await transport.createDirectConversation('u-peer');
+    await db.upsertConversation(transport.conversations[chatId]!,
+        currentUserId: adaId);
+    transport.emit(RemoteMessageUpserted(RemoteMessage(
+      id: 'm-de-ada',
+      conversationId: chatId,
+      senderId: adaId,
+      content: 'lo escribió Ada',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    )));
+    final asAda =
+        await engine.watchMessages(chatId).firstWhere((m) => m.isNotEmpty);
+    expect(asAda.single.isOutgoing, isTrue, reason: 'Ada es la autora');
+
+    // Cambio de cuenta (logOut vacía la BD local; se re-siembra el mensaje).
+    await engine.logOut();
+    await login('grace@alim.dev');
+    final graceId = transport.currentUserId!;
+    expect(graceId, isNot(adaId));
+    await db.upsertConversation(transport.conversations[chatId]!,
+        currentUserId: graceId);
+    await db.applyIncomingMessage(
+      RemoteMessage(
+        id: 'm-de-ada',
+        conversationId: chatId,
+        senderId: adaId,
+        content: 'lo escribió Ada',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+      currentUserId: graceId,
+    );
+
+    final asGrace =
+        await engine.watchMessages(chatId).firstWhere((m) => m.isNotEmpty);
+    expect(asGrace.single.isOutgoing, isFalse,
+        reason: 'para Grace, el mensaje de Ada es entrante');
+  });
+
+  test('regresión: con el outbox vacío no queda trabajo pendiente que sondear',
+      () async {
+    await login('ada@alim.dev');
+    final chatId = await transport.createDirectConversation('u-peer');
+    await db.upsertConversation(transport.conversations[chatId]!,
+        currentUserId: transport.currentUserId!);
+
+    expect(await db.nextPendingAttemptAt(), isNull);
+
+    await engine.sendText(chatId, 'algo');
+    expect(await db.nextPendingAttemptAt(), isNotNull,
+        reason: 'recién encolado hay trabajo pendiente');
+
+    // Tras confirmarse el envío el outbox queda vacío: el sincronizador
+    // puede dormir en vez de consultar SQLite cada pocos segundos de por vida.
+    await engine.watchMessages(chatId).firstWhere(
+        (m) => m.isNotEmpty && m.single.status == MessageStatus.sent);
+    expect(await db.nextPendingAttemptAt(), isNull);
+  });
+
   test('ProfileEditor: setUsername propaga el error de nombre duplicado',
       () async {
     await login('ada@alim.dev');

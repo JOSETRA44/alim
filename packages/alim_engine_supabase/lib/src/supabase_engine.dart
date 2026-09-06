@@ -53,8 +53,6 @@ class SupabaseEngine
   late final StateStream<AuthState> _auth =
       StateStream<AuthState>(const AuthInitializing());
   late final StateStream<List<Chat>> _chats = StateStream<List<Chat>>(const []);
-  final Map<String, StateStream<List<Message>>> _messageRelays = {};
-  final Map<String, StreamSubscription<List<Message>>> _messageRelaySubs = {};
 
   StreamSubscription<String?>? _authSub;
   StreamSubscription<List<Chat>>? _chatsSub;
@@ -112,17 +110,12 @@ class SupabaseEngine
     if (_disposed) return;
     _disposed = true;
     await _chatsSub?.cancel();
-    for (final sub in _messageRelaySubs.values) {
-      await sub.cancel();
-    }
     _stopSync();
     await _authSub?.cancel();
     await _transport.dispose();
     _auth.value = const AuthClosed();
     _auth.close();
-    for (final relay in _messageRelays.values) {
-      relay.close();
-    }
+    _chats.close();
     await _db.close();
     _log.info('cerrado');
   }
@@ -208,19 +201,19 @@ class SupabaseEngine
 
   // --- Chats y mensajes ------------------------------------------------------
 
+  /// La query reactiva de Drift ya emite el estado vigente al suscribirse y
+  /// libera sus recursos al cancelar, así que se devuelve directamente.
+  ///
+  /// Antes había un relay cacheado por chatId: fugaba una suscripción viva
+  /// por cada chat abierto (nunca se cancelaban hasta dispose) y, peor,
+  /// congelaba el `currentUserId` del momento de la primera apertura — tras
+  /// cerrar y abrir sesión con otra cuenta, `isOutgoing` se calculaba contra
+  /// el usuario anterior.
   @override
   Stream<List<Message>> watchMessages(String chatId) {
-    final relay = _messageRelays.putIfAbsent(chatId, () {
-      final stream = StateStream<List<Message>>(const []);
-      final userId = _transport.currentUserId;
-      if (userId != null) {
-        _messageRelaySubs[chatId] = _db
-            .watchMessages(chatId, userId)
-            .listen((value) => stream.value = value);
-      }
-      return stream;
-    });
-    return relay.stream;
+    final userId = _transport.currentUserId;
+    if (userId == null) return const Stream.empty();
+    return _db.watchMessages(chatId, userId);
   }
 
   @override
@@ -259,6 +252,9 @@ class SupabaseEngine
       isOutgoing: true,
       status: MessageStatus.sending,
     ));
+    // El sincronizador duerme cuando el outbox está vacío: hay que
+    // despertarlo, no esperar a que un sondeo descubra el mensaje.
+    _sync?.notifyOutboxChanged();
   }
 
   @override
@@ -276,7 +272,10 @@ class SupabaseEngine
     await _db.deleteMessageLocal(messageId);
     try {
       await _transport.deleteMessage(messageId);
-    } on EngineException {
+    } catch (_) {
+      // Cualquier fallo (no solo EngineException: un corte de red puede
+      // llegar como SocketException sin envolver) debe restaurar la copia,
+      // o el mensaje desaparecería aquí y seguiría vivo en el servidor.
       if (backup != null) {
         await _db.applyIncomingMessage(
           RemoteMessage(
@@ -310,7 +309,7 @@ class SupabaseEngine
     await _db.editMessageLocal(messageId, trimmed);
     try {
       await _transport.editMessage(messageId, trimmed);
-    } on EngineException {
+    } catch (_) {
       await _db.applyIncomingMessage(
         RemoteMessage(
           id: backup.id,

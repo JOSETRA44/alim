@@ -420,6 +420,17 @@ class LocalDatabase extends _$LocalDatabase {
             t.nextAttemptAt.isSmallerOrEqualValue(DateTime.now())))
       .get();
 
+  /// Cuándo toca el siguiente intento pendiente, o null si no queda nada por
+  /// enviar. Permite al sincronizador dormir en vez de sondear en bucle.
+  Future<DateTime?> nextPendingAttemptAt() async {
+    final row = await (select(localOutbox)
+          ..where((t) => t.gaveUp.equals(false))
+          ..orderBy([(t) => OrderingTerm.asc(t.nextAttemptAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    return row?.nextAttemptAt;
+  }
+
   Future<void> markOutboxSent(String messageId) =>
       (delete(localOutbox)..where((t) => t.messageId.equals(messageId))).go();
 

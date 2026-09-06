@@ -89,11 +89,21 @@ class SyncEngine {
     }
   }
 
+  /// Despierta el drenado del outbox. Lo llama el motor al encolar un mensaje
+  /// nuevo, para no depender de que un sondeo lo descubra.
+  void notifyOutboxChanged() => _scheduleOutboxDrain(Duration.zero);
+
   void _scheduleOutboxDrain(Duration delay) {
     if (_disposed) return;
+    _outboxTimer?.cancel();
     _outboxTimer = Timer(delay, _drainOutbox);
   }
 
+  /// Drena lo que esté vencido y luego duerme EXACTAMENTE hasta el próximo
+  /// reintento pendiente. Si no queda nada en el outbox no se reprograma
+  /// nada: antes se re-agendaba cada 3 s indefinidamente, lo que suponía una
+  /// consulta a SQLite cada 3 s de por vida (batería en móvil) aunque no
+  /// hubiera un solo mensaje que enviar.
   Future<void> _drainOutbox() async {
     if (_disposed) return;
     final due = await _db.duePendingOutbox();
@@ -101,7 +111,12 @@ class SyncEngine {
       if (_disposed) return;
       await _sendOne(entry);
     }
-    _scheduleOutboxDrain(const Duration(seconds: 3));
+    if (_disposed) return;
+
+    final next = await _db.nextPendingAttemptAt();
+    if (next == null || _disposed) return; // outbox vacío: a dormir.
+    final delay = next.difference(DateTime.now());
+    _scheduleOutboxDrain(delay.isNegative ? Duration.zero : delay);
   }
 
   Future<void> _sendOne(LocalOutboxEntry entry) async {
