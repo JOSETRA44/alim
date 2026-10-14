@@ -78,12 +78,20 @@ class SyncEngine {
 
       final cursor = await _db.syncCursor('messages') ??
           DateTime.fromMillisecondsSinceEpoch(0);
-      final since = DateTime.now();
       final messages = await _transport.fetchMessagesSince(cursor);
+      // El cursor avanza al MÁXIMO updated_at que devolvió el servidor, no a
+      // DateTime.now() del cliente: el filtro remoto compara contra el reloj
+      // del servidor, así que un cursor en tiempo-cliente con el reloj
+      // adelantado saltaría mensajes que el servidor sella en el hueco y los
+      // perdería para siempre. Todo el cálculo queda en tiempo-servidor.
+      var maxSeen = cursor;
       for (final message in messages) {
         await _db.applyIncomingMessage(message, currentUserId: _currentUserId);
+        if (message.updatedAt.isAfter(maxSeen)) maxSeen = message.updatedAt;
       }
-      await _db.setSyncCursor('messages', since);
+      if (maxSeen.isAfter(cursor)) {
+        await _db.setSyncCursor('messages', maxSeen);
+      }
     } catch (e) {
       _log.warning('delta-pull falló: $e');
     }
